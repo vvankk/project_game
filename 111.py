@@ -15,7 +15,7 @@ vy = 0
 # Платформа
 platform = pygame.Rect(200, 450, 400, 20)
 
-GRAVITY = 0.6
+GRAVITY = 0.55
 SPEED = 5
 JUMP = -12
 
