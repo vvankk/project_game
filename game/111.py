@@ -15,6 +15,8 @@ base_path = os.path.dirname(os.path.abspath(__file__))
 player_health = config.PLAYER_HEALTH
 max_health = config.MAX_HEALTH
 
+font = pygame.font.SysFont(None, 48)
+
 # TODO: Заменить текстовый массив уровня на загрузку из файла (например, .txt или .json)
 # Символы:
 #   # - блок
@@ -175,34 +177,44 @@ frame_rate = config.FRAME_RATE  # TODO: Поиграться со значени
 enemies = [pygame.Rect(x * TILE, y * TILE, TILE, TILE) for x, y in tiles_of('V')]
 enemy_vx = {id(r): 2 for r in enemies}  # скорость каждого врага
 
-running = True
-while running:
-    dt = clock.tick(60)  # TODO: Использовать dt для физики (vx/vy зависят от времени)
-    anim_timer += dt
+state = 'menu'  # 'menu', 'play', 'pause'
 
-    # Анимация игрока (стояние/ходьба)
+running = True
+
+def draw_menu():
+    screen.fill((30, 30, 40))
+    title = font.render("Игра", True, (255, 255, 255))
+    screen.blit(title, (config.W // 2 - title.get_width() // 2, 100))
+    play_text = font.render("Играть", True, (255, 255, 255))
+    play_rect = play_text.get_rect(center=(config.W // 2, 200))
+    screen.blit(play_text, play_rect)
+    exit_text = font.render("Выход", True, (255, 255, 255))
+    exit_rect = exit_text.get_rect(center=(config.W // 2, 250))
+    screen.blit(exit_text, exit_rect)
+    return play_rect, exit_rect
+
+def draw_pause():
+    screen.fill((30, 30, 40))
+    pause_text = font.render("Пауза", True, (255, 255, 255))
+    screen.blit(pause_text, (config.W // 2 - pause_text.get_width() // 2, 100))
+    resume_text = font.render("Продолжить", True, (255, 255, 255))
+    resume_rect = resume_text.get_rect(center=(config.W // 2, 200))
+    screen.blit(resume_text, resume_rect)
+    menu_text = font.render("Меню", True, (255, 255, 255))
+    menu_rect = menu_text.get_rect(center=(config.W // 2, 250))
+    screen.blit(menu_text, menu_rect)
+    return resume_rect, menu_rect
+
+def update_game(dt):
+    global current_frame, anim_timer
+    anim_timer += dt
     if anim_timer >= frame_rate:
         current_frame = (current_frame + 1) % len(player_images)
         anim_timer = 0
 
-    # --------- ОБРАБОТКА СОБЫТИЙ ---------
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-        elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE and player.on_ground:
-            # Начало прыжка
-            player.vy = -config.JUMP_MIN
-            player.jump_held = True
-            player.jump_frames = 0
-        elif event.type == pygame.KEYUP and event.key == pygame.K_SPACE:
-            # TODO: Добавить разные типы прыжка (двойной, от стены и т.п.)
-            player.jump_held = False
-
-    keys = pygame.key.get_pressed()
-
     player.update(keys, dt)
 
-    # --------- ДВИЖЕНИЕ ВРАГОВ ---------
+    # ДВИЖЕНИЕ ВРАГОВ
     for enemy in enemies:
         enemy.x += enemy_vx[id(enemy)]
         for y, row in enumerate(level):
@@ -213,42 +225,38 @@ while running:
                         enemy_vx[id(enemy)] *= -1
                         enemy.x += enemy_vx[id(enemy)] * 2
                         break
-        # TODO: Добавить логику преследования игрока или патрулирования по точкам
 
-    # --------- СТОЛКНОВЕНИЕ ИГРОКА С ВРАГАМИ ---------
+    # СТОЛКНОВЕНИЕ ИГРОКА С ВРАГАМИ
     for enemy in enemies:
         if player.rect.colliderect(enemy):
-            # TODO: Добавить инвульн-фреймы (временная неуязвимость после удара)
             player.health -= 1
             if player.rect.centerx < enemy.centerx:
                 player.rect.x -= 10
             else:
                 player.rect.x += 10
             if player.health <= 0:
-                # TODO: Сделать отдельный экран Game Over / рестарт уровня
                 player.health = config.MAX_HEALTH
                 player.rect.topleft = (100, 100)
 
-    # --------- ПЛАТФОРМЫ ЗДОРОВЬЯ ---------
+    # ПЛАТФОРМЫ ЗДОРОВЬЯ
     for y, row in enumerate(level):
         for x, tile in enumerate(row):
             if tile == 'H':
                 r = pygame.Rect(x * TILE, y * TILE, TILE, TILE)
                 if player.rect.colliderect(r) and player.health < config.MAX_HEALTH:
                     player.health += 1
-                    # TODO: Можно сделать восстановление по таймеру вместо одноразового
                     level[y] = row[:x] + '.' + row[x+1:]
 
-    # --------- КАМЕРА ---------
+    # КАМЕРА
+    global camera_x, camera_y
     camera_x = player.rect.centerx - config.W // 2
     camera_y = player.rect.centery - config.H // 2
-    # Ограничить камеру границами уровня
     level_width = len(level[0]) * TILE
     level_height = len(level) * TILE
     camera_x = max(0, min(camera_x, level_width - config.W))
     camera_y = max(0, min(camera_y, level_height - config.H))
 
-    # --------- ОТРИСОВКА ---------
+def draw_game():
     screen.fill((30, 30, 40))
 
     # Рисуем уровень
@@ -265,12 +273,53 @@ while running:
         screen.blit(enemy_image, (enemy.x - camera_x, enemy.y - camera_y))
 
     # Рисуем здоровье игрока
-    # TODO: Заменить на полноценный HUD (иконки, текст, возможно шкалу)
     for i in range(player.health):
         screen.blit(health_image, (config.W - 30 - i * 25, 10))
 
-    # Рисуем игрока с нужной анимацией
+    # Рисуем игрока
     player.draw(screen, camera_x, camera_y, current_frame)
+while running:
+    dt = clock.tick(60)
+    keys = pygame.key.get_pressed()
+
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+        elif state == 'menu':
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                mouse_pos = pygame.mouse.get_pos()
+                play_rect, exit_rect = draw_menu()
+                if play_rect.collidepoint(mouse_pos):
+                    state = 'play'
+                elif exit_rect.collidepoint(mouse_pos):
+                    running = False
+        elif state == 'play':
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE and player.on_ground:
+                player.vy = -config.JUMP_MIN
+                player.jump_held = True
+                player.jump_frames = 0
+            elif event.type == pygame.KEYUP and event.key == pygame.K_SPACE:
+                player.jump_held = False
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_p:
+                state = 'pause'
+        elif state == 'pause':
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                mouse_pos = pygame.mouse.get_pos()
+                resume_rect, menu_rect = draw_pause()
+                if resume_rect.collidepoint(mouse_pos):
+                    state = 'play'
+                elif menu_rect.collidepoint(mouse_pos):
+                    state = 'menu'
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_p:
+                state = 'play'
+
+    if state == 'play':
+        update_game(dt)
+        draw_game()
+    elif state == 'menu':
+        draw_menu()
+    elif state == 'pause':
+        draw_pause()
 
     pygame.display.flip()
 
